@@ -1,512 +1,645 @@
-"use strict";
+﻿// 冯赛 http://192.168.88.61:3000/wechat-manage/session
+/**
+ * 联络易websocket工具
+ */
+const Websocket = {
+    // 日志前缀
+    logPrefix: 'websocket ',
+    // MTYPE与回调之间的映射
+    onMessageMap: {},
+    // 心跳时间间隔（毫秒）
+    heartBeatInterval: 3000,
+    // 是否开启断网自动重连
+    isReconnect: true,
+    // 被动断开连接时，重连时间间隔
+    reconnectInterval: 3000,
+    // 最大重连次数
+    maxReconnectCount: 10,
+    // 重连次数
+    reconnectCount: 0,
+    // 最后一次重连时间
+    lastReconnectTime: null,
+    // 是否正在重连,防止多个重连操作同时进行
+    isReconnectIng: false,
+    // 重连成功后，是否重新发送之前发送失败的消息
+    isReconnectedResend: true,
+    // 断开连接后，保留失败消息的条数
+    unReconnectMsgCount: 5,
+    // 断开连接后保留的失败消息
+    unReconnectMsg: [],
+    // 是否正在发送失败消息（防止重发）
+    isReconnectedResendIng: false,
+    // 最后一次接收到服务端心跳的时间戳
+    serverLastHeartBeat: undefined,
+    // 间隔时间内未接收到服务端心跳，断开连接
+    unliveTime: 10000,
+    // 是否支持多个回调
+    isMutiCallback: false,
+    baseUrl: 'localhost:8082',
+    // 连接标识,第一次连接成功置为true,主动断开置为false
+    // 为true时，因网络原因断开时自动重连
+    connFlag: false,
+    init: function(token,adminUserId,callback){
+        var ctx = this;
 
-(function(global, factory){
-	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-	typeof define === 'function' && define.amd ? define(factory) :
-	(global.AWS = factory());
-})(this,(function(){
+        ctx.isOpen = false;
+        ctx.adminUserId = adminUserId;
+        ctx.callback = callback;
+        ctx.ws = new WebSocket('ws://' + ctx.baseUrl + '?_token=' + token);
+        ctx.ws.onmessage = ctx.onmessage.bind(ctx);
+        ctx.ws.onclose = ctx.onclose.bind(ctx);
+        ctx.ws.onerror = ctx.onerror.bind(ctx);
+        ctx.ws.onopen = function(msg){
+            ctx.isOpen = true;
+            ctx.connFlag = true;
+            if(callback){
+                callback(msg);
+            }
+            ctx.onopen(msg);
+        };
+    },
+    // 接收服务端消息的入口
+    onmessage: function(msg){
+        var ctx = this;
+        console.log(ctx.logPrefix + 'msg:',msg);
+        var data = JSON.parse(msg.data);
+        ctx.invoke(data);
+    },
+    // 根据mType调用回调
+    invoke: function(msg){
+        if(!msg) return;
+        var mType = msg.MTYPE;
+        var ctx = this;
+        if(ctx.onMessageMap[mType]){
+            if(ctx.msgMap[mType]) msg = ctx.msgMap[mType](msg);
+            for(var callback of ctx.onMessageMap[mType]){
+                callback(msg);
+            }
+        }
+    },
+    //消息映射
+    msgMap: {
+        parseXML: function(xml){
+           /* 把xml字符串解析成
+           * */
+           let xmlDoc;
+           if (window.DOMParser) {
+             xmlDoc = new DOMParser().parseFromString(xml,'text/xml');
+           }else {
+            xmlDoc=new ActiveXObject('Microsoft.XMLDOM');
+            xmlDoc.async = 'false';
+            xmlDoc.loadXML(xml);
+          }
+          return xmlDoc
+        },
+        parseVoice: function(xml){
+            var ele = this.parseXML(xml).getElementsByTagName("voicemsg")[0];
 
-// 类型判断
-var Types = (function(){
-	var types = {};
+            return {
+                length: ele.getAttribute("length"),
+                voiceLength: ele.getAttribute("voicelength"),
+                bufid: ele.getAttribute("bufid")
+            };
+        },
+        llyToShcrm: function(msg){
+            if(!msg) return msg;
+            if(msg.MTYPE != 'receiveMessage' && msg.MTYPE != 'roomMsg') return msg;
 
-	types.get = function(val){
-		var typeStrig = toString.call(val);
+            var tmpMsg = {};
+            tmpMsg.MTYPE = msg.MTYPE;
 
-		return typeStrig.slice(8,typeStrig.length - 1);
-	}
 
-	types.is = function(val,type){
+            if('1' == msg.msgType){
+                //文本消息
+                if('5' == msg.msg_type){
+                    //微信端
+                    tmpMsg.content = msg.content;
+                }else{
+                    //平台端
+                    tmpMsg.content = msg.content;
+                }
+                tmpMsg.msgType = 1;
+            }else if('34' == msg.msgType){
+                //语音消息
+                var parseJson = this.parseVoice(msg.content);
+                tmpMsg.content = {
+                    ...parseJson,
+                    url: msg.url
+                };
+                tmpMsg.msgType = 4;
+            }else if('47' == msg.msgType && '5' == msg_type){
+                //微信端-表情图片
+                tmpMsg.content = {
+                    description: msg.description,
+                    url: msg.url
+                };
+                tmpMsg.msgType = 2;
+            }else if('3' == msg.msgType){
+                //图片消息
+                if('5' == msg.msg_type){
+                    //微信端
+                    tmpMsg.content = {
+                        description: msg.description,
+                        url: msg.url
+                    };
+                }else{
+                    //平台端
+                    tmpMsg.content = {
+                        url: msg.url
+                    };
+                }
+                tmpMsg.msgType = 2;
+            }else{
+                //未知消息类型
+                tmpMsg.content = {
+                    description: '未知的消息类型'
+                };
+                tmpMsg.msgType = 0;
+            }
 
-		return types.get(val) === type;
-	}
+            tmpMsg.room = msg.MTYPE === 'roomMsg';
+            tmpMsg.fromWxUserName = msg.fromUserName;
+            tmpMsg.toWxUserName = msg.toUserName;
+            tmpMsg.fromMemberWxUserName = msg.fromMemberUserName;
+            tmpMsg.fromMemberWxNickName = msg.fromMemberNickName;
+            tmpMsg.msgId = msg.msgId;
+            tmpMsg.uin = msg.uin;
+            tmpMsg.tokenId = msg.tokenId;
+            tmpMsg.createTime = msg.createTime;
 
-	types.isString = function(val){
+            tmpMsg.userId = msg.userId;
+            tmpMsg.userName = msg.userName;
+            tmpMsg.isRead = 0;
+            tmpMsg.id = msg.id;
 
-		return types.is(val,'String');
-	}
+            return tmpMsg;
+        },
+        receiveMessage: function(msg){
+            return this.llyToShcrm(msg);
+        },
+        roomMsg: function(msg){
+            return this.llyToShcrm(msg);
+        }
+    },
+    // socket连接成功时执行
+    onopen: function(msg){
+        var ctx = this;
+        console.log(ctx.logPrefix + 'open:',msg);
+        ctx.ping();
+        ctx.login();
 
-	types.isNull = function(val){
+        ctx.on('getcontact',function(msg){
+            ctx.onGetContact(msg);
+        });
 
-		return types.is(val,'Null');
-	}
+        ctx.on('heartBeat',function(msg){
+            ctx.onHeartBeat(msg);
+        });
 
-	types.isNumber = function(val){
+        ctx.heartBeat();
 
-		return types.is(val,'Number');
-	}
+        ctx.reconnectedResend();
+    },
+    // socket连接关闭时执行
+    onclose: function(msg){
+        var ctx = this;
+        ctx.isOpen = false;
+        console.log(ctx.logPrefix + 'close:',msg);
+    },
+    // socket连接异常时执行
+    onerror: function(msg){
+        var ctx = this;
+        console.error(ctx.logPrefix + 'error:',msg);
+    },
+    // 重连成功后发送消息
+    reconnectedResend: function(){
+        var ctx = this;
+        if(ctx.isReconnectedResendIng) return;
+        if(!ctx.isReconnectedResend) return;
+        if(ctx.unReconnectMsgCount === 0) return;
+        if(!ctx.unReconnectMsg || ctx.unReconnectMsg.length === 0) return;
 
-	types.isBoolean = function(val){
+        ctx.isReconnectedResendIng = true;
 
-		return types.is(val,'Boolean');
-	}
+        for(var i = 0; i < ctx.unReconnectMsgCount; i++){
+            console.log(ctx.logPrefix + '重发消息:',ctx.unReconnectMsg[i]);
+            ctx.send(ctx.unReconnectMsg[i]);
+        }
+        ctx.unReconnectMsg = [];
+        ctx.isReconnectedResendIng = false;
+    },
+    // 重新连接
+    autoReconnect: function(){
+        var ctx = this;
 
-	types.isUndefined = function (val){
+        if(ctx.isReconnectIng){
+            return;
+        }
+        ctx.isReconnectIng = true;
 
-		return types.is(val,'Undefined');
-	}
+        ctx.reconnectCount = 0;
+        var cb = function(){
+            // 如果主动断开连接，则停止重连
+            if(!ctx.connFlag){
+                console.log(ctx.logPrefix + '主动断开连接，放弃重连');
+                return;
+            }
 
-	types.isArray = function(val){
+            // 如果重连成功，则停止重连
+            if(ctx.isOpen){
+                console.log(ctx.logPrefix + '连接成功，停止重连');
+                ctx.isReconnectIng = false;
+                return;
+            }
 
-		return types.is(val,'Array');
-	}
+            ctx.reconnectCount++;
 
-	types.isObject = function(val){
+            // 如果重连次数超过最大重连次数，则停止重连
+            if(ctx.reconnectCount > ctx.maxReconnectCount){
+                console.error(ctx.logPrefix + '重连次数达到' + ctx.maxReconnectCount + '次,停止重连');
+                ctx.isReconnectIng = false;
+                return;
+            }
+            
+            console.log(ctx.logPrefix + '第' + ctx.reconnectCount + '次尝试重连');
+            ctx.lastReconnectTime = new Date().getTime();
+            ctx.init(ctx.adminUserId,ctx.callback);
 
-		return types.is(val,'Object');
-	}
+            setTimeout(cb,ctx.reconnectInterval);
+        };
 
-	types.isRegExp = function(val){
+        cb();
+        
+    },
+    // 向服务端发送消息的基本入口
+    send: function(msg){
+        var ctx = this; 
+        if(!ctx.isOpen){
+            console.error(ctx.logPrefix + '尚未连接!');
+            //如果支持断网重连，则保留断网时发送的消息，在重连成功后自动发出
+            if(ctx.isReconnect){
+                ctx.unReconnectMsg.push(msg);
+                if(ctx.unReconnectMsg.length > ctx.unReconnectMsgCount){
+                    ctx.unReconnectMsg = ctx.unReconnectMsg.slice(ctx.unReconnectMsg.length - ctx.unReconnectMsgCount);
+                }
 
-		return types.is(val,'RegExp');
-	}
+                ctx.autoReconnect();
+            }
+            return;
+        }
 
-	types.isFunction = function(val){
+        msg.loginer = ctx.adminUserId;
+        //新增判断  只在ws是连接状态 发送信息 9-20 12:32
+        if(ctx.ws.readyState===1){
+          ctx.ws.send(JSON.stringify(msg));
+        }
+        console.log(ctx.logPrefix + 'send msg:',msg);
+    },
+    on: function(mType,callback){
+        var ctx = this;
+        if(!ctx.onMessageMap[mType]) ctx.onMessageMap[mType] = [];
+        if(ctx.isMutiCallback){
+            ctx.onMessageMap[mType].push(callback);
+        }else{
+            ctx.onMessageMap[mType] = [callback];
+        }
+        
+    },
+    ping: function(){
+        var ctx = this;
+        ctx.send({
+            'MTYPE': 'ping'
+        });
+    },
+    login: function(){
+        var ctx = this;
+        ctx.send({
+            'MTYPE': 'login'
+        });
+    },
+    close: function(){
+        var ctx = this;
+        ctx.connFlag = false;
+        ctx.ws.close();
+    },
+    // 心跳
+    heartBeat: function(){
+        var ctx = this;
+        var func = function(){
+            var nowTime = new Date().getTime();
+            var diff = (nowTime - ctx.serverLastHeartBeat);
+            if(diff > ctx.unliveTime){
+                console.error(ctx.logPrefix + '等待服务端心跳超时，连接已断开!');
+                ctx.isOpen = false;
+                if(ctx.isReconnect){
+                    ctx.autoReconnect();
+                }else{
+                    ctx.ws.close();
+                }
+                return;
+            }
 
-		return types.is(val,'Function');
-	}
+            ctx.send({
+                'MTYPE': 'heartBeat'
+            });
 
-	types.isWindow = function(val){
+            setTimeout(function(){
+                if(ctx.isOpen){
+                    func();
+                }
+            },ctx.heartBeatInterval)
+        };
 
-		return types.is(val,'Window');
-	}
+        func();
+    },
+    // 接收到服务端心跳
+    onHeartBeat: function(msg){
+        var ctx = this;
+        ctx.serverLastHeartBeat = new Date().getTime();
+    },
+    // 接收服务端发送的好友列表
+    // 将好友列表分成普通好友列表、群聊列表
+    onGetContact: function(msg){
+        var ctx = this;
+        var onFriendList = {
+            MTYPE: 'onFriendList',
+            code: 1,
+            result: [],
+            nickName: msg.nickName,
+            uin: msg.uin,
+            wechatUserName: msg.wechatUserName,
+            wechatUserUin: msg.wechatUserUin
+        };
 
-	types.isArguments = function(val){
+        var onGroupList = {
+            MTYPE: 'onGroupList',
+            code: 1,
+            result: [],
+            nickName: msg.nickName,
+            uin: msg.uin,
+            wechatUserName: msg.wechatUserName,
+            wechatUserUin: msg.wechatUserUin
+        };
 
-		return types.is(val,'Arguments');
-	}
+        if(!!msg.contact && msg.contact.length > 0){
+            for(var item of msg.contact){
+                if(!!item.seq && item.seq.endsWith('@chatroom')){
+                    //群聊
+                    onGroupList.result.push(item);
+                }else if(msg.uin != item.uin){
+                    //普通好友
+                    onFriendList.result.push(item);
+                }
+            }
+        }
 
-	return types;
-})();
+        ctx.invoke(onFriendList);
+        ctx.invoke(onGroupList);
+    },
+    // 获取二维码
+    qrCode: function(options){
+        var ctx = this;
+        var data = {
+            '@class': 'java.util.Map',
+            'MTYPE': 'qrCode'
+        };
 
-// 断言
-var Assert = { 
-	isNull: function(object, message){
-		if(!Types.isNull(object)){
-			throw new Error(message);
-		}
-	},
-	notNull: function(object, message){
-		if(Types.isNull(object)){
-			throw new Error(message);
-		}
-	},
-	isString: function(object, message){
-		if(!Types.isString(object)){
-			throw new Error(message);
-		}
-	},
-	isObject: function(object, message){
-		if(!Types.isObject(object)){
-			throw new Error(message);
-		}
-	},
-	isNullOrObject: function(object, message){
-		if(!Types.isNull(object) && !Types.isObject(object)){
-			throw new Error(message);
-		}
-	},
+        if(options && options.uin){
+            data.uin = options.uin;
+        }
+
+        if(options && options.userName){
+            data.userName = options.userName;
+        }
+
+        ctx.send(data);
+    },
+    sendTextMsg: function(msg){
+        var ctx = this;
+        var data = {
+            '@class': 'cn.xmlly.chat.message.domain.Message',
+            'MTYPE': 'sendMessage',
+            'content': msg.content,
+            'fromUserName': msg.from,
+            'msgType': 1,
+            'toUserName': msg.to,
+            'tokenId': 'sendMsg-' + new Date().getTime(),
+            'uin': msg.uin
+        };
+
+        ctx.send(data);
+    },
+    sendFileMsg: function(msg){
+        var ctx = this;
+        var data = {
+            'MTYPE': 'sendMessage',
+            'fromUserName': msg.from,
+            'msgType': 49,
+            'toUserName': msg.to,
+            'tokenId': 'sendFile-' + new Date().getTime(),
+            'uin': msg.uin,
+            'description': '请点击打开文档',
+            'content': msg.content
+        };
+
+        ctx.send(data);
+    },
+    modifyName: function(msg){
+        var ctx = this;
+        var data = {
+            '@class': 'java.util.Map',
+            'MTYPE': 'modifyName',
+            'uin': msg.uin,
+            'userName': msg.userName,
+            'newRemarkName': msg.newRemarkName
+        };
+
+        ctx.send(data);
+    },
+    logout: function(msg){
+        var ctx = this;
+        var data = {
+            '@class': 'java.util.Map',
+            'MTYPE': 'logout',
+            'uin': msg.uin
+        };
+        ctx.send(data);
+    },
+    unreadMsg: function(){
+        var ctx = this;
+        var data = {
+            '@class': 'java.util.Map',
+            'MTYPE': 'unreadMsg'
+        };
+
+        ctx.send(data);
+    },
+    openReply: function(){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'openReply'
+        };
+
+        ctx.send(data);
+    },
+    closeReply: function(){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'closeReply'
+        };
+
+        ctx.send(data);
+    },
+    getReplyUser: function(){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'getReplyUser'
+        };
+
+        ctx.send(data);
+    },
+    deleteWechat: function(uin){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'deleteWechat',
+            data: {
+                uin: uin
+            }
+        };
+
+        ctx.send(data);
+    },
+    getOnlineUserList: function(){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'getOnlineUserList'
+        };
+
+        ctx.send(data);
+    },
+    intoReplyStatus: function(uin,contactUserName){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'intoReplyStatus',
+            data: {
+                uin: uin,
+                contactUserName: contactUserName
+            }
+        };
+
+        ctx.send(data);
+    },
+    cancelReplyStatus: function(uin,contactUserName){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'cancelReplyStatus',
+            data: {
+                uin: uin,
+                contactUserName: contactUserName
+            }
+        };
+
+        ctx.send(data);
+    },
+    getContactReplyStatus: function(uin,contactUserName){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'getContactReplyStatus',
+            data: {
+                uin: uin,
+                contactUserName: contactUserName
+            }
+        };
+
+        ctx.send(data);
+    },
+    getWxReplyStatus: function(uin){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'getWxReplyStatus',
+            data: {
+                uin: uin
+            }
+        };
+
+        ctx.send(data);
+    },
+    cleanUnReadMsgCount: function(uin,contactUserName){
+        var ctx = this;
+        var data = {
+            MTYPE: 'SHCRM',
+            op: 'cleanUnReadMsgCount',
+            data: {
+                uin: uin,
+                contactUserName: contactUserName
+            }
+        };
+
+        ctx.send(data);
+    },
 };
- 
-// 日志
-var Logger = function(name){
 
-	var LEVEL = {
-		all: {
-			v: 0
-		},
-		debug: {
-			v: 1,
-			color: 'gray'
-		},
-		info: {
-			v: 2,
-			color: 'green'
-		},
-		warn: {
-			v: 3,
-			color: 'blue'
-		},
-		error: {
-			v: 4,
-			color: 'red'
-		},
-		off: {
-			v: 5
-		}
-	};
-
-	function out(data){
-		var level = data[0];
-
-		if(LEVEL[level].v < LEVEL[this.level].v) return;
- 
-		var date = new Date();
-		var year = date.getFullYear();
-		var month = date.getMonth() + 1;
-		var day = date.getDate();
-		var hour = date.getHours();
-		var minute = date.getMinutes();
-		var second = date.getSeconds();
-		var milliSecond =  date.getMilliseconds();
-
-		var info = '%c [Asgc Log] [' + year + '-' + month + '-' + day + ' ' + hour + ':' + minute + ':' + second + '.' + milliSecond + '] [' + name + ' level:' + level + '] ';
-		var params = [];
-		params.push(info);
-		params.push('color:' + LEVEL[level].color);
-		for(var i = 1; i < data.length; i++){
-			params.push(data[i]);
-		}	
-
-		console.log.apply(this,params);
-	}
-
-	return {
-		/**
-		 * all
-		 * debug
-		 * info
-		 * warn
-		 * error
-		 * off
-		 * */
-		 
-		level: 'all',
-		setLevel: function(level){
-			this.level = level;
-		},
-		setLevelAll: function(){
-			this.level = 'all';
-		},
-		setLevelDebug: function(){
-			this.level = 'debug';
-		},
-		setLevelInfo: function(){
-			this.level = 'info';
-		},
-		setLevelWarn: function(){
-			this.level = 'warn';
-		},
-		setLevelError: function(){
-			this.level = 'error';
-		},
-		setLevelOff: function(){
-			this.level = 'off';
-		},
-		debug: function(){
-			var params = Array.prototype.slice.apply(arguments);
-			params.insertFirst('debug');
-			out.call(this,params);
-		},
-		info: function(){
-			var params = Array.prototype.slice.apply(arguments);
-			params.insertFirst('info');
-			out.call(this,params);
-		},
-		warn: function(){
-			var params = Array.prototype.slice.apply(arguments);
-			params.insertFirst('warn');
-			out.call(this,params);
-		},
-		error: function(){
-			var params = Array.prototype.slice.apply(arguments);
-			params.insertFirst('error');
-			out.call(this,params);
-		}
-	};
-};
-
-// 日期格式化
-function dateFormat(date,fmt) { 
-	// 默认格式
-	fmt = fmt ? fmt : 'yyyy-MM-dd hh:mm:ss';
-
-    var o = { 
-        "M+" : date.getMonth()+1,                 // 月份 
-        "d+" : date.getDate(),                    // 日 
-        "h+" : date.getHours(),                   // 小时 
-        "m+" : date.getMinutes(),                 // 分 
-        "s+" : date.getSeconds(),                 // 秒 
-        "q+" : Math.floor((date.getMonth()+3)/3), // 季度 
-        "S"  : date.getMilliseconds()             // 毫秒 
-    }; 
-    if(/(y+)/.test(fmt)) {
-            fmt=fmt.replace(RegExp.$1, (date.getFullYear()+"").substr(4 - RegExp.$1.length)); 
+var data = {};
+function getNickNameByUserName(userName){
+    for(var friend of data.friendList){
+        if(friend.wechatUserName === userName){
+            return friend.nickName;
+        }
     }
-     for(var k in o) {
-        if(new RegExp("("+ k +")").test(fmt)){
-             fmt = fmt.replace(RegExp.$1, (RegExp.$1.length==1) ? (o[k]) : (("00"+ o[k]).substr((""+ o[k]).length)));
-         }
-     }
-    return fmt; 
 }
 
-// 随机数
-function rndNum(n) {
-    var rnd = "";
-    for (var i = 0; i < n; i++)
-        rnd += Math.floor(Math.random() * 10);
-    return rnd;
-}
+Websocket.on('qrCode',function(msg){
+    console.log('刷新二维码1',msg);
+});
 
-// 填充字符串
-function fillString(src,len,fill){
-	var ret = src + '';
+Websocket.on('onFriendList',function(msg){
+    console.log('好友列表',msg);
+    data.friendList = msg.result;
+});
 
-	if(!fill) return ret;
+Websocket.on('onGroupList',function(msg){
+    console.log('群聊列表',msg);
+    data.groupList = msg.result;
+});
 
-	while(ret.length < len){
-		ret = fill + ret;
-	}
+Websocket.on('receiveMessage',function(msg){
+    console.log('私聊消息',msg);
+});
 
-	return ret;
-}
+Websocket.on('roomMsg',function(msg){
+    console.log('群聊消息',msg);
+    var nickName = getNickNameByUserName(msg.fromUserName);
+    console.log(nickName,msg.content);
+    Websocket.sendTextMsg({
+        uin: '2103630261',
+        from: 'wxid_sd73ohjn7c2m21',
+        to: '11303075408@chatroom',
+        content: '1122\u1f60f'
+    });
+});
 
-// 自增序列
-var Sequence = function(min = 0,max = 9999999999){
-	var v = min;
-	return {
-		next: function(){
-			v = v + 1;
+Websocket.on('logout',function(msg){
+    console.log('账号下线',msg.uin);
+});
 
-			if(v > max){
-				v = min;
-			}
+Websocket.on('login',function(msg){
+    console.log('登陆成功',msg);
+    data.userInfo = msg.result[0];
+});
 
-			return v;
-		}
-	};
-};
 
-// UUID
-var UUID = {
-	sequence: Sequence(),
-	get: function(){
-		return dateFormat(new Date(),'yyyyMMddhhmmss') + rndNum(10) + fillString(this.sequence.next(),8,'0');
-	}
-};
+Websocket.init('fff633cd15ce4b95a3237365cd10c820',189,function(){
 
-// WS连接
-function Connection(option){
-	if(!(this instanceof Connection)){
-		return new Connection(option);
-	}
+	Websocket.qrCode();
 
-	Assert.notNull(option, 'option must not null !');
-	Assert.isNullOrObject(option.params, 'option.params must is null or is object !');
+});
 
-	var ctx = this;
-
-	ctx.logger = option.aws.logger;
-	
-	ctx.onopen = function(){
-		ctx.serverLastMsgTime = new Date().getTime();
-		// 是否已连接（连接断开时置为false）
-		ctx.isOpen = true;
-		// 连接标识,第一次连接成功置为true,主动断开置为false
-    	// 为true时，因网络原因断开时自动重连
-		ctx.connFlag = true;
-		if(option.onopen) option.onopen.call(ctx);
-		if(option.sendHeartBeat) ctx.sendHeartBeat();
-	};
-
-	ctx.onmessage = function(msg){
-		ctx.serverLastMsgTime = new Date().getTime();
-		if(option.onmessage) option.onmessage.call(ctx,msg.data);
-	};
-
-	ctx.onclose = function(msg){
-		if(option.onclose) option.onclose.call(ctx,msg);
-	};
-
-	ctx.onerror = function(msg){
-		if(option.onerror) option.onerror.call(ctx,msg);
-	};
-
-	ctx.close = function(){
-		ctx.connFlag = false;
-		ctx.isOpen = false;
-		ctx.ws.close();
-	};
-
-	ctx.sendHeartBeat = function(){
-		var func = function(){
-			if(ctx.aws.isSendHeartBeat && option.sendHeartBeat){
-				var nowTime = new Date().getTime();
-            	var diff = (nowTime - ctx.serverLastMsgTime);
-
-            	if(diff > ctx.aws.unliveTime){
-		            ctx.logger.error('等待服务端心跳超时，连接已断开!');
-		            ctx.isOpen = false;
-	                if(ctx.aws.isReconnect){
-	                    ctx.aws.autoReconnect(ctx.id);
-	                }else{
-	                    ctx.ws.close();
-	                }
-	                return;
-	            }
-
-				option.sendHeartBeat.call(ctx);
-
-				setTimeout(function(){
-	                if(ctx.isOpen){
-	                    func();
-	                }
-	            },ctx.aws.heartBeatInterval)
-			}
-		};
-		
-		func();
-	};
-
-	ctx.send = function(msg){
-		if(Types.isString(msg)){
-			ctx.ws.send(msg);
-		}else if(Types.isObject(msg)){
-			ctx.ws.send(JSON.stringify(msg));
-		}else{
-			ctx.logger.error('msg format invalid !',msg);
-		}
-	};
-
-	ctx.reConnection = function(){
-		ctx.logger.debug('reConnection ' + ctx.id);
-		ctx.ws = new WebSocket(ctx.url);
-		ctx.ws.onmessage = ctx.onmessage.bind(ctx);
-		ctx.ws.onclose = ctx.onclose.bind(ctx);
-		ctx.ws.onerror = ctx.onerror.bind(ctx);
-		ctx.ws.onopen = ctx.onopen.bind(ctx);
-	};
-
-	ctx.__proto__ = option;
-
-	ctx.url = option.url;
-	ctx.ws = new WebSocket(ctx.url);
-	ctx.isReconnectIng = false;
-	ctx.ws.onmessage = ctx.onmessage.bind(ctx);
-	ctx.ws.onclose = ctx.onclose.bind(ctx);
-	ctx.ws.onerror = ctx.onerror.bind(ctx);
-	ctx.ws.onopen = ctx.onopen.bind(ctx);
-
-}
-
-// WS管理对象
-function AWS(option){
-	if(!(this instanceof AWS)){
-		return new AWS(option);
-	}
-
-	Assert.notNull(option, 'option must not null !');
-	Assert.isString(option.url, 'option.url must is string !');
-
-	if(option.url.startsWith('ws://') || option.url.startsWith('wss://')){
-		this.url = option.url;
-	}else{
-		this.url = 'ws://' + option.url;
-	}
-
-	this.name = option.name || '';
-
-	if(option.name){
-		this.logger = Logger(option.name + ' AWS');
-	}else{
-		this.logger = Logger('AWS');
-	}
-
-	this.__proto__ = option;
-
-	// 是否发送心跳包
-	this.isSendHeartBeat = option.isSendHeartBeat || false;
-	// 心跳发送时间间隔
-	this.heartBeatInterval = option.heartBeatInterval || 3000;
-	// 是否开启断网自动重连
-	this.isReconnect = option.isReconnect || false;
-	// 被动断开连接时，重连时间间隔
-	this.reconnectInterval = option.reconnectInterval || 3000;
-	// 最大重连次数（-1为无限制）
-	this.maxReconnectCount = option.maxReconnectCount || -1;
-	// 重连成功后，是否重新发送之前发送失败的消息
-	this.isReconnectedResend = option.isReconnectedResend || false;
-	// 断开连接后，保留失败消息的条数
-	this.unReconnectMsgCount = option.unReconnectMsgCount || 10;
-	// 间隔时间内未接收到服务端心跳，断开连接
-	this.unliveTime = option.unliveTime || 10000;
-	// 日志级别
-	this.loggerLevel = option.loggerLevel || 'all',
-
-	this.logger.setLevel(this.loggerLevel);
-
-	this.conn = {};
-
-	this.openConnection = function(option = {}){
-		var ctx = this;
-		var logger = ctx.logger;
-		var id = id = UUID.get();
-		logger.debug('openConnection ' + id);
-		option.aws = ctx;
-		option.id = id;
-		option.url = ctx.url;
-		var params = option.params || {};
-		if(Object.keys(params).length > 0){
-			var url = ctx.url + '?';
-			for(var key in params){
-				url += key + '=' + params[key] + '&';
-			}
-			url = url.substring(0,url.length - 1);
-			option.url = url;
-		}
-		var conn = new Connection(option);
-		ctx.conn[id] = conn;
-		conn.aws = ctx;
-		conn.option = option;
-
-		return conn;
-	};
-
-	this.autoReconnect = function(connId){
-		var ctx = this;
-		var logger = ctx.logger;
-		var conn = ctx.conn[connId];
-		Assert.notNull(conn, 'conn ' + connId + ' not exist!');
-
-		if(conn.isReconnectIng){
-			return;
-		}
-
-		conn.isReconnectIng = true;
-		conn.reconnectCount = 0;
-
-		var cb = function(){
-			// 如果主动断开连接，则停止重连
-			if(!conn.connFlag){
-				logger.debug('主动断开连接，放弃重连!');
-				return;
-			}
-			// 如果重连成功，则停止重连
-			if(conn.isOpen){
-				logger.debug('连接成功，停止重连!');
-				conn.isReconnectIng = false;
-                return;
-			}
-			conn.reconnectCount++;
-			// 如果重连次数超过最大重连次数，则停止重连
-			if(-1 != ctx.maxReconnectCount && conn.reconnectCount > ctx.maxReconnectCount){
-				logger.debug('重连次数达到' + conn.reconnectCount + '次,停止重连!');
-				conn.isReconnectIng = false;
-                return;
-			}
-			
-			logger.debug('第' + conn.reconnectCount + '次尝试重连');
-			conn.lastReconnectTime = new Date().getTime();
-			conn.reConnection();
-			setTimeout(cb,ctx.reconnectInterval);
-		};
-
-		cb();
-	};
-
-}
-
-return AWS;
-
-}));
