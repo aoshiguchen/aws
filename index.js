@@ -91,6 +91,16 @@ var Assert = {
 			throw new Error(message);
 		}
 	},
+	isUndefined: function(object, message){
+		if(!Types.isUndefined(object)){
+			throw new Error(message);
+		}
+	},
+	notUndefined: function(object, message){
+		if(Types.isUndefined(object)){
+			throw new Error(message);
+		}
+	},
 	isString: function(object, message){
 		if(!Types.isString(object)){
 			throw new Error(message);
@@ -106,6 +116,11 @@ var Assert = {
 			throw new Error(message);
 		}
 	},
+	isNoneOrObject: function(object, message){
+		if(!Types.isNull(object) && !Types.isUndefined(object) && !Types.isObject(object)){
+			throw new Error(message);
+		}
+	}
 };
  
 // 日志
@@ -293,7 +308,7 @@ function Connection(option){
 	}
 
 	Assert.notNull(option, 'option must not null !');
-	Assert.isNullOrObject(option.params, 'option.params must is null or is object !');
+	Assert.isNoneOrObject(option.params, 'option.params must is null or is object !');
 
 	var ctx = this;
 
