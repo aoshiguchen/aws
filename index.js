@@ -122,7 +122,19 @@ var Assert = {
 		}
 	}
 };
- 
+
+Array.prototype.insertFirst = function (item) {
+  if(Types.isArray(item)){
+  	for(var i = item.length - 1; i >= 0; i--){
+  		this.splice(0, 0, item[i]);
+  	}
+  }else{
+  	this.splice(0, 0, item);
+  }
+
+  return this;
+};
+
 // 日志
 var Logger = function(name){
 
