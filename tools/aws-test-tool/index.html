@@ -1,0 +1,115 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+
+<head> 
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>AWS-测试</title>
+    <script type="text/javascript" src="lib/aws/aws-1.0.0.all.js"></script>
+    <script type="text/javascript" src="lib/jquery/jquery-2.1.4.min.js"></script>
+    <link rel="stylesheet" href="lib/layui-v2.4.5/layui/css/layui.css">
+    <script type="text/javascript" src="lib/layui-v2.4.5/layui/layui.js"></script>
+    <script type="text/javascript" src="data.js"></script>
+    <script type="text/javascript" src="single.js"></script>
+    <script type="text/javascript" src="msg-template.js"></script>
+    <script type="text/javascript" src="busi-config.js"></script>
+    <script type="text/javascript" src="aws-config.js"></script>
+</head>
+<body>
+<ul class="layui-nav" lay-filter="aws-config">
+  <li class="layui-nav-item layui-this"><a href="javascript:display(0);">单连接测试</a></li>
+  <li class="layui-nav-item"><a href="javascript:display(1);">多连接测试</a></li>
+  <li class="layui-nav-item"><a href="javascript:display(2);">压力测试</a></li>
+  <li class="layui-nav-item"><a href="javascript:display(3);">消息模板</a></li>
+  <li class="layui-nav-item"><a href="javascript:display(4);">业务参数配置</a></li>
+  <li class="layui-nav-item"><a href="javascript:display(5);">AWS配置</a></li>
+</ul>
+<!-- 单连接测试 -->
+<div id="content" class="layui-container" style="margin-left:0px;width:100%;"> 
+  <div class="layui-row" style="width:100%;">
+    <div class="layui-col-md6">
+      <fieldset class="layui-elem-field layui-field-title">
+        <legend>连接</legend>
+      </fieldset>   
+      <button class="layui-btn" id="single-open">连接</button>
+      <button class="layui-btn layui-btn-primary" id="single-close" disabled>断开</button>
+      <fieldset class="layui-elem-field layui-field-title">
+        <legend>发消息</legend>
+      </fieldset>   
+      <div class="layui-form">
+      <div class="layui-form-item">
+        <label class="layui-form-label">消息模板</label>
+        <div class="layui-input-block">
+          <select lay-verify="required" id="msg-template-select" lay-filter="msg-template-select">
+          </select>
+        </div>
+      </div>
+      </div>
+      <textarea placeholder="请输入内容" class="layui-textarea" rows="12" id="single-msg">
+{
+  type: 'sendWeChatMsgReq',
+  body: {
+    weChatId: 'wxid_d47cc0zvu26622',
+    friendId: 'wxid_vs2hq03nf5o422',
+    msgType: 1,
+    content: 'hello001',
+    msgId: 20190508120001
+  }
+}
+      </textarea>
+      <button class="layui-btn layui-btn-primary" style="margin-top:10px;" id="single-send" disabled>发送</button>
+    </div>
+    <div class="layui-col-md5">
+
+    </div>
+  </div>
+</div>
+<!-- 多连接测试 -->
+<div id="content" style="display:none;">
+开发中...
+</div>
+<!-- 压力测试 -->
+<div id="content" style="display:none;">
+开发中...
+</div>
+<!-- 消息模板 -->
+<div id="content" style="display:none;">
+<table class="layui-hide" id="msg-template-config" lay-filter="msg-template-config"></table>
+</div>
+<!-- 业务参数配置 -->
+<div id="content" style="display:none;">
+<fieldset class="layui-elem-field layui-field-title" style="margin-top: 20px;">
+  <legend>握手参数</legend>
+</fieldset>   
+<script type="text/html" id="busi-toolbar">
+  <div class="layui-btn-container">
+    <button class="layui-btn layui-btn-sm" lay-event="addRow">新增</button>
+  </div>
+</script>
+<script type="text/html" id="busi-bar">
+  <a class="layui-btn layui-btn-danger layui-btn-xs" lay-event="del">删除</a>
+</script>
+<table class="layui-hide" id="busi-config" lay-filter="busi-config"></table>
+<fieldset class="layui-elem-field layui-field-title" style="margin-top: 20px;">
+  <legend>心跳包</legend>
+</fieldset>   
+<textarea placeholder="请输入内容" class="layui-textarea" rows="10" style="width:900px;" id="busi-heartbeatReq">
+{
+  type: 'heartbeatReq'
+}
+</textarea>
+</div>
+<!-- AWS配置 -->
+<div id="content" style="display:none;">
+<table class="layui-hide" id="aws-config" lay-filter="aws-config"></table>
+</div>
+<script>
+function display(n){
+  $('.layui-nav-item').attr('class','layui-nav-item');
+  $('.layui-nav-item').eq(n).attr('class','layui-nav-item layui-this');
+  $('[id=content]').css('display','none');
+  $('[id=content]').eq(n).css('display','block');
+}
+</script>
+</body>
+</html>
