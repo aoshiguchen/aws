@@ -8,22 +8,22 @@ $(function(){
 
 function initSingleEvent(){
   $('#single-open').click(function(){
-    singleData.isOpen = true;
-    setDisabled('single-open',true);
-    setDisabled('single-close',false);
-    setDisabled('single-send',false);
     singleOpen();
   });
   $('#single-close').click(function(){
-    singleData.isOpen = false;
-    setDisabled('single-open',false);
-    setDisabled('single-close',true);
-    setDisabled('single-send',true);
+    setStatus(false);
     singleClose();
   });
   $('#single-send').click(function(){
     singleSend();
   });
+}
+
+function setStatus(isOpen){
+    singleData.isOpen = isOpen;
+    setDisabled('single-open',isOpen);
+    setDisabled('single-close',!isOpen);
+    setDisabled('single-send',!isOpen);
 }
 
 function initSingleData(){
@@ -39,7 +39,6 @@ function initSingleData(){
 }
 
 function singleOpen(){
-  if(!singleData.isOpen) return;
   singleData.aws = new AWS(Cache.awsConfig);
 
   // 打开WS连接
@@ -48,6 +47,7 @@ function singleOpen(){
     params: Cache.busiConfig.handshake,
     // WS连接成功时执行
     onopen: function(){
+      setStatus(true);
       this.logger.debug('onopen');
     },
     // WS收到消息时执行
@@ -57,6 +57,7 @@ function singleOpen(){
     },
     // WS关闭时执行
     onclose: function(msg){
+      setStatus(false);
       this.logger.debug('onclose:',msg);
     },
     // WS异常时执行
@@ -72,7 +73,6 @@ function singleOpen(){
 } 
 
 function singleClose(){
-  if(singleData.isOpen) return;
   singleData.conn.close();
 }
 

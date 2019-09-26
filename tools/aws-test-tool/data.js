@@ -1,10 +1,10 @@
 var Cache = {
 	awsConfig: {
 		// 【可选】【默认：''】连接名，描述信息，用于多个WS连接时日志区分
-		name: 'SCRM-DEV',
+		name: 'SCRM-UAT',
 		// 【必填】WS连接地址
 		// url: 'ws://api.scrm.dev.laoganma.fun:8082',
-		url: 'ws://api.scrm.dev.laoganma.fun:8082',
+		url: 'ws://api.scrm.uat.laoganma.fun:8082',
 		// 【可选】【默认：false】是否发送心跳包
 		isSendHeartBeat: true,
 		// 【可选】【默认：3000】心跳发送时间间隔
@@ -26,10 +26,10 @@ var Cache = {
 	},
   busiConfig: {
     handshake: {
-      _token: '954d47487a5e4ab1b91455909d8bb09c',
-      _mtId: '302',
+      _token: '40608cb84f2c4905880689e5693c3ff0',
+      _mtId: '624',
       _ut: '1',
-      _uid: '614'
+      _uid: '1167'
     },
     heartBeat: {
       type: 'heartbeatReq'

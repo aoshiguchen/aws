@@ -39,7 +39,7 @@ layui.use('table', function(){
     var checkStatus = table.checkStatus(obj.config.id);
     switch(obj.event){
       case 'addRow':
-        var oldData =  table.cache['busi-config'];
+        var oldData = table.cache['busi-config'];
         if(oldData.length === 20){
           layer.msg('已达到最大行数，不能继续添加了!');
         }
