@@ -1,8 +1,17 @@
 $(function(){
-  initData();
+  initBusiData();
+  busiConfigEvent();
 });
 
-function initData(){
+function busiConfigEvent(){
+  $('#busi-heartbeatReq').change(function(){
+      var val = $('#busi-heartbeatReq').val();
+      setHeartBeatData(val);
+      layer.msg('心跳参数已更新!');
+  });
+}
+
+function initBusiData(){
   $('#busi-heartbeatReq').val(getHeartBeatData());
 }
 

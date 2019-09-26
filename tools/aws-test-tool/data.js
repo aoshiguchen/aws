@@ -83,7 +83,7 @@ function getHeartBeatData(){
 }
 
 function setHeartBeatData(data){
-  Cache.busiConfig.heartBeat = JSON.parse(data);
+  Cache.busiConfig.heartBeat = data;
 }
 
 function getAWSTableData(){
