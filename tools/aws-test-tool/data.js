@@ -48,7 +48,7 @@ var Cache = {
     data: "{type: 'sendWeChatMsgReq',body: { weChatId: 'wxid_d47cc0zvu26622',friendId: 'wxid_vs2hq03nf5o422',msgType: 2,content: 'https://ss3.baidu.com/-rVXeDTa2gU2pMbgoY3K/it/u=2492331056,4193866086&fm=202&mola=new&crop=v1',msgId: new Date().getTime()}}"
   },{
     name: '发送文件消息',
-    data: "{type: 'sendWeChatMsgReq',body: {weChatId: 'wxid_d47cc0zvu26622',friendId: 'wxid_vs2hq03nf5o422',msgType: 8,content: 'https://medcloud.oss-cn-shanghai.aliyuncs.com/his/produce/MHDIxzsD33DDMLuCwv.txt', msgId: new Date().getTime()}}"
+    data: "{type: 'sendWeChatMsgReq',body: {weChatId: 'wxid_d47cc0zvu26622',friendId: 'wxid_vs2hq03nf5o422',msgType: 8,content: 'https://xxx', msgId: new Date().getTime()}}"
   }]
 };
 
