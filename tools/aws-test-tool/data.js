@@ -3,8 +3,7 @@ var Cache = {
 		// 【可选】【默认：''】连接名，描述信息，用于多个WS连接时日志区分
 		name: 'SCRM-UAT',
 		// 【必填】WS连接地址
-		// url: 'ws://api.scrm.dev.laoganma.fun:8082',
-		url: 'ws://api.scrm.uat.laoganma.fun:8082',
+		url: 'ws://xxx',
 		// 【可选】【默认：false】是否发送心跳包
 		isSendHeartBeat: true,
 		// 【可选】【默认：3000】心跳发送时间间隔
